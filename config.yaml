@@ -1,0 +1,21 @@
+schedule_hour: 7
+
+gmail:
+  email: "user@gmail.com"
+  imap_server: "imap.gmail.com"
+
+topics:
+  Markets:
+    recipients: ["+15551234567"]
+    newsletters:
+      - name: "WSJ"
+        sender: "newsletter@wsj.com"
+      - name: "Alpha Digest"
+        sender: "digest@alphadigest.com"
+
+twilio:
+  # SID, auth token, from_number all in .env
+
+llm:
+  model: "claude-haiku-4-5-20251001"
+  max_bullets: 7
