@@ -1,5 +1,6 @@
 import imaplib
 import email
+import email.message
 from email.header import decode_header
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -60,14 +61,17 @@ def _extract_html_body(msg: email.message.Message) -> str:
 
 def fetch_newsletters(
     gmail_config: dict,
-    sender_addresses: list[str],
+    newsletters: list[dict],
     since_hours: int = 24,
 ) -> list[Email]:
-    """Fetch emails from specified senders within the last since_hours.
+    """Fetch emails from specified senders or labels within the last since_hours.
+
+    Each newsletter dict should have a 'name' and either a 'sender' (email
+    address) or a 'label' (Gmail label / IMAP mailbox name).
 
     Args:
         gmail_config: Dict with 'email' and 'imap_server' keys.
-        sender_addresses: List of sender email addresses to search for.
+        newsletters: List of newsletter dicts from config.
         since_hours: How far back to search (default 24 hours).
 
     Returns:
@@ -84,15 +88,28 @@ def fetch_newsletters(
     try:
         mail = imaplib.IMAP4_SSL(gmail_config["imap_server"])
         mail.login(gmail_config["email"], app_password)
-        mail.select("INBOX", readonly=True)
 
-        for sender in sender_addresses:
-            search_criteria = f'(FROM "{sender}" SINCE {since_date})'
+        for nl in newsletters:
+            name = nl.get("name", "Unknown")
+
+            if "label" in nl:
+                mailbox = f'"{nl["label"]}"'
+                search_criteria = f"(SINCE {since_date})"
+                logger.info(f"Selecting mailbox {mailbox} for {name}")
+                status, _ = mail.select(mailbox, readonly=True)
+                if status != "OK":
+                    logger.warning(f"Could not select mailbox {mailbox}")
+                    continue
+            else:
+                sender = nl.get("sender", "")
+                search_criteria = f'(FROM "{sender}" SINCE {since_date})'
+                mail.select("INBOX", readonly=True)
+
             logger.info(f"Searching: {search_criteria}")
 
             status, message_ids = mail.search(None, search_criteria)
             if status != "OK" or not message_ids[0]:
-                logger.info(f"No emails found from {sender}")
+                logger.info(f"No emails found for {name}")
                 continue
 
             for msg_id in message_ids[0].split():

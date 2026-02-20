@@ -2,7 +2,7 @@
 """Donna — Autonomous Briefing Agent.
 
 Reads Gmail newsletters, groups by topic, summarizes via Claude,
-and delivers one SMS per topic via Twilio.
+and delivers one email per topic via Gmail SMTP.
 """
 
 import sys
@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 from gmail_reader import fetch_newsletters
 from parser import extract_text
 from summarizer import summarize_topic
-from sms_sender import send_sms
+from email_sender import send_email
 
 logging.basicConfig(
     level=logging.INFO,
@@ -46,17 +46,15 @@ def run():
     for topic_name, topic_config in topics.items():
         logger.info(f"Processing topic: {topic_name}")
 
-        # Collect sender addresses for this topic
+        # Collect newsletters for this topic
         newsletters = topic_config.get("newsletters", [])
-        sender_addresses = [nl["sender"] for nl in newsletters]
-        sender_to_name = {nl["sender"]: nl["name"] for nl in newsletters}
 
-        if not sender_addresses:
+        if not newsletters:
             logger.warning(f"No newsletters configured for {topic_name}")
             continue
 
         # Fetch emails
-        emails = fetch_newsletters(gmail_config, sender_addresses)
+        emails = fetch_newsletters(gmail_config, newsletters)
         if not emails:
             logger.info(f"No newsletters found for {topic_name}, skipping")
             continue
@@ -66,13 +64,7 @@ def run():
         for em in emails:
             text = extract_text(em.html_body)
             if text:
-                # Match sender to newsletter name
-                name = "Unknown"
-                for addr, nl_name in sender_to_name.items():
-                    if addr.lower() in em.sender.lower():
-                        name = nl_name
-                        break
-                newsletter_texts.append({"name": name, "text": text})
+                newsletter_texts.append({"text": text})
 
         if not newsletter_texts:
             logger.info(f"No parseable content for {topic_name}, skipping")
@@ -86,10 +78,10 @@ def run():
             all_success = False
             continue
 
-        # Send SMS to each recipient
-        recipients = topic_config.get("recipients", [])
+        # Send email to each recipient
+        recipients = topic_config.get("recipients", [gmail_config["email"]])
         for recipient in recipients:
-            success = send_sms(recipient, summary, topic_name)
+            success = send_email(recipient, summary, topic_name)
             if not success:
                 all_success = False
 

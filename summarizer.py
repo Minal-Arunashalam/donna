@@ -37,10 +37,7 @@ def summarize_topic(
         return ""
 
     # Build the user message with all newsletter content
-    parts = []
-    for nl in newsletter_texts:
-        parts.append(f"--- {nl['name']} ---\n{nl['text']}")
-    combined = "\n\n".join(parts)
+    combined = "\n\n".join(nl["text"] for nl in newsletter_texts)
 
     user_message = (
         f"Topic: {topic_name}\n\n"
