@@ -31,6 +31,8 @@ def extract_text(html: str) -> str:
     # Remove common newsletter chrome by class/id patterns
     for attr in ["class", "id"]:
         for el in soup.find_all(attrs={attr: True}):
+            if el.attrs is None:
+                continue
             val = " ".join(el.get(attr, [])) if isinstance(el.get(attr), list) else str(el.get(attr, ""))
             val_lower = val.lower()
             if any(kw in val_lower for kw in ["footer", "unsubscribe", "social-links", "advertisement"]):
