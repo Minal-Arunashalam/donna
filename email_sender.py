@@ -1,4 +1,6 @@
+import html
 import os
+import re
 import smtplib
 import logging
 from datetime import datetime
@@ -88,17 +90,36 @@ def send_digest(sections: dict[str, str], recipients: list[str]) -> bool:
     date_str = datetime.now().strftime("%b %-d")
     subject = f"\u2600\ufe0f Donna \u2014 {date_str}"
 
-    body_parts = []
+    html_parts = []
     for topic_name, summary in sections.items():
         emoji = TOPIC_EMOJIS.get(topic_name, "\U0001f4cb")
-        header = f"\u2500\u2500 {emoji} {topic_name.upper()} \u2500\u2500"
-        body_parts.append(f"{header}\n{summary}")
+        header = f'<h3 style="color: #555; font-size: 13px; letter-spacing: 0.08em; margin: 28px 0 8px; text-transform: uppercase;">{emoji} {topic_name}</h3>'
+        items = []
+        for line in summary.split("\n"):
+            if line.startswith("•"):
+                line = line[1:].strip()
+                line = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', line)
+                # Split on <b> tags to escape only the non-bold parts
+                parts = re.split(r'(<b>.*?</b>)', line)
+                escaped = "".join(
+                    p if p.startswith("<b>") else html.escape(p)
+                    for p in parts
+                )
+                items.append(f'  <li style="margin-bottom: 10px;">{escaped}</li>')
+        if items:
+            ul = '<ul style="padding-left: 20px; margin: 0 0 8px;">\n' + "\n".join(items) + "\n</ul>"
+            html_parts.append(header + "\n" + ul)
 
-    body = "\n\n".join(body_parts)
+    html_body = (
+        '<html><body style="font-family: sans-serif; max-width: 620px; margin: 0 auto;'
+        ' color: #1a1a1a; font-size: 15px; line-height: 1.5;">\n\n'
+        + "\n\n".join(html_parts)
+        + "\n\n</body></html>"
+    )
 
     all_success = True
     for to in recipients:
-        msg = MIMEText(body)
+        msg = MIMEText(html_body, "html")
         msg["Subject"] = subject
         msg["From"] = sender
         msg["To"] = to
