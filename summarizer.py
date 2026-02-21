@@ -3,53 +3,65 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You are a briefing analyst producing SMS summaries for a busy executive.
+SYSTEM_PROMPT = """You are a briefing analyst producing a daily intelligence briefing for an executive.
+
+For each topic, write 4-6 bullets. Each bullet should be 1-2 sentences: substantive,
+specific, and decision-relevant. Include concrete numbers and implications where available.
+
+Format: • [Key development with specifics and so-what]
 
 Rules:
-- Output EXACTLY 5-7 bullet points, no more, no less.
-- Each bullet follows this format: [Domain]: [Change] → [Implication]
-- Each bullet must be ≤60 characters.
-- Total output must be ≤480 characters.
-- Focus on decision-relevant signals only — skip fluff, ads, and filler.
-- No greetings, sign-offs, or meta-commentary. Just bullets.
-- Use • as the bullet character.
-- One bullet per line."""
+- Lead with the most important story
+- Include numbers, names, and stakes when available
+- No fluff, filler, greetings, or meta-commentary
+- Use • as the bullet character, one per line"""
 
 
 def summarize_topic(
     topic_name: str,
     newsletter_texts: list[dict],
-    model: str = "claude-haiku-4-5-20251001",
+    model: str = "claude-sonnet-4-6",
     max_bullets: int = 7,
+    subjects: list[str] | None = None,
 ) -> str:
-    """Summarize newsletter texts for a topic into SMS-ready bullets.
+    """Summarize newsletter texts for a topic into briefing bullets.
 
     Args:
         topic_name: Name of the topic (e.g., "Markets").
-        newsletter_texts: List of dicts with 'name' and 'text' keys.
+        newsletter_texts: List of dicts with 'text' keys.
         model: Claude model ID to use.
-        max_bullets: Maximum number of bullets (used in prompt).
+        max_bullets: Maximum number of bullets (unused, kept for compatibility).
+        subjects: List of email subject lines for headline context.
 
     Returns:
-        Formatted string of bullet points ready for SMS.
+        Formatted string of bullet points.
     """
     if not newsletter_texts:
         return ""
 
-    # Build the user message with all newsletter content
     combined = "\n\n".join(nl["text"] for nl in newsletter_texts)
+    subjects = subjects or []
+
+    headlines_section = ""
+    if subjects:
+        headlines_section = (
+            f"\nNewsletter headlines today:\n"
+            + "\n".join(subjects)
+            + "\n"
+        )
 
     user_message = (
-        f"Topic: {topic_name}\n\n"
-        f"Summarize the following newsletters into 5-{max_bullets} bullets.\n\n"
-        f"{combined}"
+        f"Topic: {topic_name}\n"
+        f"{headlines_section}"
+        f"\nContent:\n{combined}\n\n"
+        f"Write 4-6 substantive bullets covering the key developments."
     )
 
     try:
         client = anthropic.Anthropic()
         response = client.messages.create(
             model=model,
-            max_tokens=300,
+            max_tokens=600,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_message}],
         )
