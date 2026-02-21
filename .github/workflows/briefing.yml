@@ -1,0 +1,31 @@
+name: Donna Daily Briefing
+
+on:
+  schedule:
+    - cron: "0 12 * * *"  # 7am ET (EST = UTC-5); in summer EDT runs at 8am ET
+  workflow_dispatch:       # enables manual trigger from GitHub UI or gh CLI
+
+jobs:
+  run-briefing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Donna briefing
+        env:
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          GMAIL_SENDER: ${{ secrets.GMAIL_SENDER }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python briefing.py
