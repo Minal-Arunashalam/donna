@@ -88,7 +88,7 @@ def send_digest(sections: dict[str, str], recipients: list[str]) -> bool:
         return False
 
     date_str = datetime.now().strftime("%b %-d")
-    subject = f"\u2600\ufe0f Donna \u2014 {date_str}"
+    subject = f"\u2600\ufe0f Morning Briefing \u2014 {date_str}"
 
     html_parts = []
     for topic_name, summary in sections.items():
