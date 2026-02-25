@@ -156,8 +156,10 @@ def _parse_sections(raw: str) -> tuple[dict[str, str], dict[str, str]]:
             #extract the Sources: line if claude included it
             if line.lower().startswith("sources:"):
                 source_line = line[len("sources:"):].strip()
-            elif line.startswith("•"):
-                bullet_lines.append(line)
+            elif line.startswith("•") or line.startswith("- ") or line.startswith("* "):
+                # normalize all bullet styles to • for downstream rendering
+                normalized = "• " + line.lstrip("•-* ").lstrip()
+                bullet_lines.append(normalized)
         if bullet_lines:
             sections[section_name] = "\n".join(bullet_lines)
             if source_line:
@@ -195,6 +197,8 @@ def synthesize_all(
         logger.info(f"Raw synthesis: {len(raw)} chars")
         sections, sources = _parse_sections(raw)
         logger.info(f"Parsed {len(sections)} section(s): {list(sections.keys())}")
+        if not sections:
+            logger.warning(f"Parse found 0 sections. First 600 chars of raw:\n{raw[:600]}")
         return sections, sources
     except anthropic.APIError as e:
         logger.error(f"Claude API error during synthesis: {e}")
