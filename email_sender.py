@@ -84,12 +84,13 @@ def send_email(to: str, body: str, topic_name: str = "") -> bool:
     return _send_via_smtp(msg, sender, app_password, to)
 
 
-def send_digest(sections: dict[str, str], recipients: list[str]) -> bool:
+def send_digest(sections: dict[str, str], recipients: list[str], sources: dict[str, str] | None = None) -> bool:
     """Send a single consolidated digest email with all topic sections.
 
     Args:
         sections: Mapping of topic name → bullet summary.
         recipients: List of recipient email addresses.
+        sources: Optional mapping of topic name → source attribution string.
 
     Returns:
         True if all sends succeeded, False if any failed.
@@ -104,11 +105,17 @@ def send_digest(sections: dict[str, str], recipients: list[str]) -> bool:
     date_str = datetime.now().strftime("%b %-d")
     subject = f"\u2600\ufe0f Morning Briefing \u2014 {date_str}"
 
+    sources = sources or {}
     #build one html block per section — each gets a header and a bullet list
     html_parts = []
     for topic_name, summary in sections.items():
         emoji = TOPIC_EMOJIS.get(topic_name, "\U0001f4cb")
-        header = f'<h3 style="color: #555; font-size: 13px; letter-spacing: 0.08em; margin: 28px 0 8px; text-transform: uppercase;">{emoji} {topic_name}</h3>'
+        header = f'<h3 style="color: #555; font-size: 13px; letter-spacing: 0.08em; margin: 28px 0 4px; text-transform: uppercase;">{emoji} {topic_name}</h3>'
+        #render source attribution as small muted text below the section header
+        source_html = ""
+        if topic_name in sources:
+            escaped_sources = html.escape(sources[topic_name])
+            source_html = f'<p style="color: #999; font-size: 11px; margin: 0 0 8px; font-style: italic;">via {escaped_sources}</p>'
         items = []
         for line in summary.split("\n"):
             if line.startswith("•"):
@@ -124,7 +131,7 @@ def send_digest(sections: dict[str, str], recipients: list[str]) -> bool:
                 items.append(f'  <li style="margin-bottom: 10px;">{escaped}</li>')
         if items:
             ul = '<ul style="padding-left: 20px; margin: 0 0 8px;">\n' + "\n".join(items) + "\n</ul>"
-            html_parts.append(header + "\n" + ul)
+            html_parts.append(header + "\n" + source_html + "\n" + ul)
 
     html_body = (
         '<html><body style="font-family: sans-serif; max-width: 620px; margin: 0 auto;'

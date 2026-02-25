@@ -41,14 +41,17 @@ OUTPUT FORMAT — critical for parsing:
 Respond with ONLY the following structure, no preamble, no closing remarks:
 
 ## Section Name
+Sources: Newsletter Name A, Newsletter Name B
 • Bullet one text here, including explanation and context.
 • Bullet two text here.
 
 ## Another Section Name
+Sources: Newsletter Name A
 • Bullet one text here.
 
 Rules:
 - Section headers must use exactly ## followed by a space and the section name.
+- The Sources line must immediately follow the section header, using the sender's display name (not email address), comma-separated.
 - Each bullet must start with • on its own line.
 - No nested bullets, no horizontal rules, no extra commentary."""
 
@@ -133,9 +136,10 @@ def _build_user_message(newsletters: list[dict]) -> str:
     )
 
 
-def _parse_sections(raw: str) -> dict[str, str]:
+def _parse_sections(raw: str) -> tuple[dict[str, str], dict[str, str]]:
     #find all ## section headers and split the raw text into per-section chunks
     sections = {}
+    sources = {}
     pattern = re.compile(r'^##\s+(.+)$', re.MULTILINE)
     matches = list(pattern.finditer(raw))
     for i, match in enumerate(matches):
@@ -144,22 +148,27 @@ def _parse_sections(raw: str) -> dict[str, str]:
         #each section ends where the next ## header begins
         end = matches[i + 1].start() if i + 1 < len(matches) else len(raw)
         body = raw[start:end].strip()
-        #only keep lines that are actual bullet points, skip any stray prose
-        bullet_lines = [
-            line.strip()
-            for line in body.splitlines()
-            if line.strip().startswith("•")
-        ]
+        bullet_lines = []
+        source_line = ""
+        for line in body.splitlines():
+            line = line.strip()
+            #extract the Sources: line if claude included it
+            if line.lower().startswith("sources:"):
+                source_line = line[len("sources:"):].strip()
+            elif line.startswith("•"):
+                bullet_lines.append(line)
         if bullet_lines:
             sections[section_name] = "\n".join(bullet_lines)
-    return sections
+            if source_line:
+                sources[section_name] = source_line
+    return sections, sources
 
 
 def synthesize_all(
     newsletters: list[dict],
-    model: str = "claude-sonnet-4-6",
+    model: str = "claude-sonnet-4-5-20250929",
     max_tokens: int = 4000,
-) -> dict[str, str]:
+) -> tuple[dict[str, str], dict[str, str]]:
     """Synthesize all newsletters into a dynamic multi-section briefing.
 
     Args:
@@ -168,10 +177,10 @@ def synthesize_all(
         max_tokens: Maximum tokens for the response.
 
     Returns:
-        Dict mapping section name → bullet string.
+        Tuple of (sections, sources) where both map section name → string.
     """
     if not newsletters:
-        return {}
+        return {}, {}
     user_message = _build_user_message(newsletters)
     try:
         client = anthropic.Anthropic()
@@ -183,12 +192,12 @@ def synthesize_all(
         )
         raw = response.content[0].text.strip()
         logger.info(f"Raw synthesis: {len(raw)} chars")
-        sections = _parse_sections(raw)
+        sections, sources = _parse_sections(raw)
         logger.info(f"Parsed {len(sections)} section(s): {list(sections.keys())}")
-        return sections
+        return sections, sources
     except anthropic.APIError as e:
         logger.error(f"Claude API error during synthesis: {e}")
-        return {}
+        return {}, {}
     except Exception as e:
         logger.error(f"Synthesis failed: {e}")
-        return {}
+        return {}, {}

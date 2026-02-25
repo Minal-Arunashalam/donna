@@ -65,14 +65,14 @@ def run():
 
     logger.info(f"Processing {len(newsletters)} newsletter(s)")
     #single claude call reads all newsletters and returns dynamically determined sections
-    sections = synthesize_all(newsletters, model=model, max_tokens=max_tokens)
+    sections, sources = synthesize_all(newsletters, model=model, max_tokens=max_tokens)
 
     if not sections:
         logger.error("Synthesis returned no sections")
         return False
 
     logger.info(f"Sending digest with {len(sections)} section(s): {list(sections.keys())}")
-    return send_digest(sections, recipients)
+    return send_digest(sections, recipients, sources=sources)
 
 
 def main():
