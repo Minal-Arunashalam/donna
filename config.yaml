@@ -20,4 +20,4 @@ recipients:
 llm:
   model: "claude-sonnet-4-5-20250929"
   #max tokens for the synthesis response — increase to 6000 if sections truncate
-  max_tokens: 4000
+  max_tokens: 6000

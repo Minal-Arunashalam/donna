@@ -53,7 +53,8 @@ Rules:
 - Section headers must use exactly ## followed by a space and the section name.
 - The Sources line must immediately follow the section header, using the sender's display name (not email address), comma-separated.
 - Each bullet must start with • on its own line.
-- No nested bullets, no horizontal rules, no extra commentary."""
+- No nested bullets, no horizontal rules, no extra commentary.
+- Keep your total response under 22,000 characters. Budget section count and bullet length accordingly — finish every section you start."""
 
 
 def summarize_topic(
