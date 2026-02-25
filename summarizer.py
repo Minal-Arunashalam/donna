@@ -1,8 +1,11 @@
+import re
 import anthropic
 import logging
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
+#legacy system prompt used by the per-topic summarize_topic() function
 SYSTEM_PROMPT = """You are a briefing analyst producing a daily intelligence briefing for an executive.
 
 For each topic, write 4-6 bullets. Each bullet should be 1-2 sentences: substantive,
@@ -15,6 +18,39 @@ Rules:
 - Include numbers, names, and stakes when available
 - No fluff, filler, greetings, or meta-commentary
 - Use • as the bullet character, one per line"""
+
+#system prompt for the new single-call synthesis approach
+#instructs claude to determine sections dynamically from actual content rather than fixed topics
+SYNTHESIS_SYSTEM_PROMPT = """You are Donna, an elite executive briefing analyst. Read all newsletters below and produce a single comprehensive daily briefing.
+
+TASK:
+1. Read all newsletters provided.
+2. Identify the natural thematic sections that emerge from today's content. Common sections include Markets, Private Equity, Tech & AI, Politics, Geopolitics, Health, Energy, Real Estate — but use whatever sections the actual content warrants. Do not force a fixed list; create only sections with meaningful content.
+3. For each section, write 5-8 detailed bullets.
+
+BULLET REQUIREMENTS:
+- Each bullet must be 2-4 sentences, not 1. Be thorough — do not omit important information.
+- Include all relevant numbers, company names, people, dates, and dollar figures.
+- When using industry jargon (e.g. "basis points," "LBO," "yield curve," "CRISPR," "quantitative tightening"), briefly explain it in plain terms parenthetically, e.g. "the yield curve inverted (meaning short-term borrowing costs now exceed long-term ones, a classic recession warning sign)."
+- Lead each bullet with the most important fact, then explain context and implications.
+- Explain the "so what" — why does this matter?
+- Do not repeat the same story across multiple sections.
+- Use • as the bullet character.
+
+OUTPUT FORMAT — critical for parsing:
+Respond with ONLY the following structure, no preamble, no closing remarks:
+
+## Section Name
+• Bullet one text here, including explanation and context.
+• Bullet two text here.
+
+## Another Section Name
+• Bullet one text here.
+
+Rules:
+- Section headers must use exactly ## followed by a space and the section name.
+- Each bullet must start with • on its own line.
+- No nested bullets, no horizontal rules, no extra commentary."""
 
 
 def summarize_topic(
@@ -75,3 +111,84 @@ def summarize_topic(
     except Exception as e:
         logger.error(f"Summarization failed for {topic_name}: {e}")
         return ""
+
+
+def _build_user_message(newsletters: list[dict]) -> str:
+    #format date in a readable way so claude knows what day it's writing the briefing for
+    date_str = datetime.now().strftime("%A, %B %-d, %Y")
+    blocks = []
+    for i, nl in enumerate(newsletters):
+        #label each newsletter so claude can attribute stories to their source
+        blocks.append(
+            f"--- NEWSLETTER {i + 1} ---\n"
+            f"Subject: {nl['subject']}\n"
+            f"From: {nl['sender']}\n\n"
+            f"{nl['text']}"
+        )
+    return (
+        f"Today's date: {date_str}\n\n"
+        f"You have received {len(newsletters)} newsletter(s).\n\n"
+        + "\n\n".join(blocks)
+        + "\n\nNow produce the briefing."
+    )
+
+
+def _parse_sections(raw: str) -> dict[str, str]:
+    #find all ## section headers and split the raw text into per-section chunks
+    sections = {}
+    pattern = re.compile(r'^##\s+(.+)$', re.MULTILINE)
+    matches = list(pattern.finditer(raw))
+    for i, match in enumerate(matches):
+        section_name = match.group(1).strip()
+        start = match.end()
+        #each section ends where the next ## header begins
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(raw)
+        body = raw[start:end].strip()
+        #only keep lines that are actual bullet points, skip any stray prose
+        bullet_lines = [
+            line.strip()
+            for line in body.splitlines()
+            if line.strip().startswith("•")
+        ]
+        if bullet_lines:
+            sections[section_name] = "\n".join(bullet_lines)
+    return sections
+
+
+def synthesize_all(
+    newsletters: list[dict],
+    model: str = "claude-sonnet-4-6",
+    max_tokens: int = 4000,
+) -> dict[str, str]:
+    """Synthesize all newsletters into a dynamic multi-section briefing.
+
+    Args:
+        newsletters: List of dicts with 'subject', 'sender', and 'text' keys.
+        model: Claude model ID to use.
+        max_tokens: Maximum tokens for the response.
+
+    Returns:
+        Dict mapping section name → bullet string.
+    """
+    if not newsletters:
+        return {}
+    user_message = _build_user_message(newsletters)
+    try:
+        client = anthropic.Anthropic()
+        response = client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            system=SYNTHESIS_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_message}],
+        )
+        raw = response.content[0].text.strip()
+        logger.info(f"Raw synthesis: {len(raw)} chars")
+        sections = _parse_sections(raw)
+        logger.info(f"Parsed {len(sections)} section(s): {list(sections.keys())}")
+        return sections
+    except anthropic.APIError as e:
+        logger.error(f"Claude API error during synthesis: {e}")
+        return {}
+    except Exception as e:
+        logger.error(f"Synthesis failed: {e}")
+        return {}

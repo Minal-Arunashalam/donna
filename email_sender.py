@@ -8,7 +8,9 @@ from email.mime.text import MIMEText
 
 logger = logging.getLogger(__name__)
 
+#maps section names to emojis for the email header — unknown sections fall back to 📋
 TOPIC_EMOJIS = {
+    #existing
     "Markets": "\U0001f4ca",
     "Tech": "\U0001f4bb",
     "AI": "\U0001f916",
@@ -16,11 +18,23 @@ TOPIC_EMOJIS = {
     "Geopolitics": "\U0001f30d",
     "Politics": "\U0001f5f3",
     "Business": "\U0001f4bc",
+    #new expected sections from dynamic synthesis
+    "Tech & AI": "\U0001f916",
+    "Private Equity": "\U0001f4b8",
+    "Energy": "\u26a1",
+    "Health": "\U0001f3e5",
+    "Real Estate": "\U0001f3e0",
+    "Defense": "\U0001f6e1",
+    "Economy": "\U0001f4c9",
+    "Finance": "\U0001f4b3",
+    "International": "\U0001f310",
+    "Media": "\U0001f4f0",
+    "Retail": "\U0001f6d2",
 }
 
 
 def _send_via_smtp(msg: MIMEText, sender: str, app_password: str, to: str) -> bool:
-    for attempt in range(2):  # 1 initial + 1 retry
+    for attempt in range(2):  #1 initial + 1 retry
         try:
             with smtplib.SMTP("smtp.gmail.com", 587) as server:
                 server.starttls()
@@ -90,6 +104,7 @@ def send_digest(sections: dict[str, str], recipients: list[str]) -> bool:
     date_str = datetime.now().strftime("%b %-d")
     subject = f"\u2600\ufe0f Donna \u2014 {date_str}"
 
+    #build one html block per section — each gets a header and a bullet list
     html_parts = []
     for topic_name, summary in sections.items():
         emoji = TOPIC_EMOJIS.get(topic_name, "\U0001f4cb")
@@ -98,8 +113,9 @@ def send_digest(sections: dict[str, str], recipients: list[str]) -> bool:
         for line in summary.split("\n"):
             if line.startswith("•"):
                 line = line[1:].strip()
+                #convert **bold** markdown to html bold tags
                 line = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', line)
-                # Split on <b> tags to escape only the non-bold parts
+                #escape html in non-bold segments to prevent injection
                 parts = re.split(r'(<b>.*?</b>)', line)
                 escaped = "".join(
                     p if p.startswith("<b>") else html.escape(p)
@@ -117,6 +133,7 @@ def send_digest(sections: dict[str, str], recipients: list[str]) -> bool:
         + "\n\n</body></html>"
     )
 
+    #send to each recipient independently so one failure doesn't block others
     all_success = True
     for to in recipients:
         msg = MIMEText(html_body, "html")

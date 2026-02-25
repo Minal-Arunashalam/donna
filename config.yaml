@@ -1,23 +1,23 @@
+#hour of day (24h) when the scheduled briefing runs
 schedule_hour: 7
 
+#gmail account used for both reading and sending
 gmail:
   email: "minal.shalam@gmail.com"
   imap_server: "imap.gmail.com"
 
-topics:
-  Markets:
-    newsletters:
-      - label: "News/markets"
-  AI:
-    newsletters:
-      - label: "News/tech"
-  Politics:
-    newsletters:
-      - label: "News/politics"
-  Business:
-    newsletters:
-      - label: "News/business"
+#single gmail label to pull all newsletters from
+input:
+  label: "Donna/Inputs"
+  #how far back to look for emails, in hours
+  since_hours: 24
 
+#list of addresses that receive the daily briefing
+recipients:
+  - "minal.shalam@gmail.com"
+
+#claude model and output size settings
 llm:
   model: "claude-sonnet-4-6"
-  max_bullets: 7
+  #max tokens for the synthesis response — increase to 6000 if sections truncate
+  max_tokens: 4000

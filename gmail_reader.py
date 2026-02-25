@@ -9,7 +9,7 @@ import os
 
 logger = logging.getLogger(__name__)
 
-
+#simple container for the fields we care about from each email
 @dataclass
 class Email:
     subject: str
@@ -19,6 +19,7 @@ class Email:
 
 def _decode_header_value(value: str) -> str:
     """Decode an email header value that may be encoded."""
+    #email headers can be encoded in base64 or quoted-printable, decode each chunk
     parts = decode_header(value)
     decoded = []
     for part, charset in parts:
@@ -34,6 +35,7 @@ def _extract_html_body(msg: email.message.Message) -> str:
     if msg.is_multipart():
         html_parts = []
         text_parts = []
+        #walk all mime parts and collect html and plain text separately
         for part in msg.walk():
             content_type = part.get_content_type()
             if content_type == "text/html":
@@ -46,12 +48,14 @@ def _extract_html_body(msg: email.message.Message) -> str:
                 if payload:
                     charset = part.get_content_charset() or "utf-8"
                     text_parts.append(payload.decode(charset, errors="replace"))
+        #prefer html over plain text since newsletters have richer html content
         if html_parts:
             return html_parts[0]
         if text_parts:
             return text_parts[0]
         return ""
     else:
+        #single-part message, decode payload directly
         payload = msg.get_payload(decode=True)
         if payload:
             charset = msg.get_content_charset() or "utf-8"
@@ -83,6 +87,7 @@ def fetch_newsletters(
         return []
 
     emails = []
+    #imap SINCE filter only accepts dates, not times — emails from the cutoff date are included
     since_date = (datetime.now() - timedelta(hours=since_hours)).strftime("%d-%b-%Y")
 
     try:
@@ -93,6 +98,7 @@ def fetch_newsletters(
             name = nl.get("name", "Unknown")
 
             if "label" in nl:
+                #gmail nested labels map directly to imap mailbox paths, e.g. "Donna/Inputs"
                 mailbox = f'"{nl["label"]}"'
                 search_criteria = f"(SINCE {since_date})"
                 logger.info(f"Selecting mailbox {mailbox} for {name}")
@@ -101,6 +107,7 @@ def fetch_newsletters(
                     logger.warning(f"Could not select mailbox {mailbox}")
                     continue
             else:
+                #fallback: search inbox by sender address instead of label
                 sender = nl.get("sender", "")
                 search_criteria = f'(FROM "{sender}" SINCE {since_date})'
                 mail.select("INBOX", readonly=True)
@@ -113,6 +120,7 @@ def fetch_newsletters(
                 continue
 
             for msg_id in message_ids[0].split():
+                #RFC822 fetches the full raw email including headers and body
                 status, msg_data = mail.fetch(msg_id, "(RFC822)")
                 if status != "OK":
                     logger.warning(f"Failed to fetch message {msg_id}")

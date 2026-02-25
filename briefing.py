@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 from gmail_reader import fetch_newsletters
 from parser import extract_text
-from summarizer import summarize_topic
+from summarizer import synthesize_all
 from email_sender import send_digest
 
 logging.basicConfig(
@@ -34,63 +34,45 @@ def run():
     gmail_config = config["gmail"]
     llm_config = config.get("llm", {})
     model = llm_config.get("model", "claude-sonnet-4-6")
-    max_bullets = llm_config.get("max_bullets", 7)
+    max_tokens = llm_config.get("max_tokens", 4000)
 
-    topics = config.get("topics", {})
-    if not topics:
-        logger.warning("No topics configured")
+    #pull input settings — single label replaces the old per-topic label setup
+    input_config = config.get("input", {})
+    label = input_config.get("label", "Donna/Inputs")
+    since_hours = input_config.get("since_hours", 24)
+    recipients = config.get("recipients", [gmail_config["email"]])
+
+    logger.info(f"Fetching from label: {label}, since {since_hours}h ago")
+    #pass label as a single-item list to match fetch_newsletters' expected format
+    raw_emails = fetch_newsletters(gmail_config, [{"label": label}], since_hours=since_hours)
+
+    if not raw_emails:
+        logger.warning("No emails found — nothing to send today")
         return True
 
-    sections: dict[str, str] = {}
-    recipients: list[str] = []
+    #convert html bodies to plain text and drop any emails that fail to parse
+    newsletters = []
+    for em in raw_emails:
+        text = extract_text(em.html_body)
+        if text:
+            newsletters.append({"subject": em.subject, "sender": em.sender, "text": text})
+        else:
+            logger.warning(f"Could not extract text from: {em.subject}")
 
-    for topic_name, topic_config in topics.items():
-        logger.info(f"Processing topic: {topic_name}")
+    if not newsletters:
+        logger.warning("No parseable newsletter content")
+        return True
 
-        newsletters = topic_config.get("newsletters", [])
-        if not newsletters:
-            logger.warning(f"No newsletters configured for {topic_name}")
-            continue
-
-        emails = fetch_newsletters(gmail_config, newsletters)
-        if not emails:
-            logger.info(f"No newsletters found for {topic_name}, skipping")
-            continue
-
-        # Collect recipients from the first topic that defines them
-        if not recipients:
-            recipients = topic_config.get("recipients", [gmail_config["email"]])
-
-        newsletter_texts = []
-        subjects = []
-        for em in emails:
-            text = extract_text(em.html_body)
-            if text:
-                newsletter_texts.append({"text": text})
-                subjects.append(em.subject)
-
-        if not newsletter_texts:
-            logger.info(f"No parseable content for {topic_name}, skipping")
-            continue
-
-        logger.info(f"Summarizing {len(newsletter_texts)} newsletter(s) for {topic_name}")
-        summary = summarize_topic(topic_name, newsletter_texts, model, max_bullets, subjects)
-        if not summary:
-            logger.error(f"Summarization returned empty for {topic_name}")
-            continue
-
-        sections[topic_name] = summary
+    logger.info(f"Processing {len(newsletters)} newsletter(s)")
+    #single claude call reads all newsletters and returns dynamically determined sections
+    sections = synthesize_all(newsletters, model=model, max_tokens=max_tokens)
 
     if not sections:
-        logger.warning("No sections to send")
-        return True
+        logger.error("Synthesis returned no sections")
+        return False
 
-    if not recipients:
-        recipients = [gmail_config["email"]]
-
-    logger.info(f"Sending digest with {len(sections)} section(s) to {recipients}")
-    success = send_digest(sections, recipients)
-    return success
+    logger.info(f"Sending digest with {len(sections)} section(s): {list(sections.keys())}")
+    return send_digest(sections, recipients)
 
 
 def main():
