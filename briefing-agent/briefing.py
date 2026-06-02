@@ -5,6 +5,7 @@ Reads Gmail newsletters, groups by topic, summarizes via Claude,
 and delivers one consolidated digest email.
 """
 
+import os
 import sys
 import logging
 import yaml
@@ -22,7 +23,9 @@ logging.basicConfig(
 logger = logging.getLogger("briefing")
 
 
-def load_config(path: str = "config.yaml") -> dict:
+def load_config(path: str = None) -> dict:
+    if path is None:
+        path = os.path.join(os.path.dirname(__file__), "config.yaml")
     with open(path) as f:
         return yaml.safe_load(f)
 

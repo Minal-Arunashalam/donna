@@ -3,3 +3,8 @@ __pycache__/
 *.pyc
 logs/
 venv/
+
+# Next.js (hq/)
+hq/.next/
+hq/node_modules/
+hq/.env.local
